@@ -1,6 +1,6 @@
 //
 //  SettingsManager.swift
-//  DropOver
+//  CloudStash
 //
 //  Created by Fayaz Ahmed Aralikatti on 12/01/26.
 //
@@ -154,7 +154,7 @@ final class SettingsManager {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
-            kSecAttrService as String: "com.dropover.app"
+            kSecAttrService as String: "com.CloudStash.app"
         ]
         
         SecItemDelete(query as CFDictionary)
@@ -170,7 +170,7 @@ final class SettingsManager {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
-            kSecAttrService as String: "com.dropover.app",
+            kSecAttrService as String: "com.CloudStash.app",
             kSecReturnData as String: true
         ]
         
@@ -188,7 +188,7 @@ final class SettingsManager {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
-            kSecAttrService as String: "com.dropover.app"
+            kSecAttrService as String: "com.CloudStash.app"
         ]
         SecItemDelete(query as CFDictionary)
     }

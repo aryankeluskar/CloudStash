@@ -1,8 +1,8 @@
 //
 //  ContentView.swift
-//  DropOver
+//  CloudStash
 //
-//  Created by Fayaz Ahmed Aralikatti on 12/01/26.
+//  Created by Aryan K on 1/26/26.
 //
 
 import SwiftUI
@@ -52,7 +52,7 @@ struct ContentView: View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Text("DropOver")
+                Text("CloudStash")
                     .font(.headline)
                 Spacer()
                 Button {
@@ -348,7 +348,7 @@ struct ContentView: View {
     // MARK: - Cache
     
     private func cachedFileURL(for file: GoogleDriveService.DriveFile) -> URL {
-        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("DropOver")
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("CloudStash")
         try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         return tempDir.appendingPathComponent(file.id + "-" + file.name)
     }

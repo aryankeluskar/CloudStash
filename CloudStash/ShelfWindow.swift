@@ -1,8 +1,8 @@
 //
 //  ShelfWindow.swift
-//  DropOver
+//  CloudStash
 //
-//  Created for DropOver App
+//  Created for CloudStash App
 //
 
 import AppKit
@@ -114,20 +114,23 @@ class ShelfPanel: NSPanel {
 // MARK: - Shelf Window Controller
 
 class ShelfWindowController: NSWindowController {
-    
+
     private let shelfManager: ShelfManager
-    
+    var onOpenSettings: (() -> Void)?
+
     init(shelfManager: ShelfManager) {
         self.shelfManager = shelfManager
-        
+
         let panel = ShelfPanel()
         super.init(window: panel)
-        
+
         // Set up the SwiftUI content
         let shelfView = ShelfView(manager: shelfManager) { [weak self] in
             self?.hide()
+        } onOpenSettings: { [weak self] in
+            self?.onOpenSettings?()
         }
-        
+
         let hostingView = NSHostingView(rootView: shelfView)
         hostingView.frame = panel.contentView?.bounds ?? .zero
         hostingView.autoresizingMask = [.width, .height]

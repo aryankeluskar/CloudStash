@@ -1,6 +1,6 @@
 //
 //  UploadedFile.swift
-//  DropOver
+//  CloudStash
 //
 //  Created by Fayaz Ahmed Aralikatti on 12/01/26.
 //

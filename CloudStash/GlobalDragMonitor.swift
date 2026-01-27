@@ -1,8 +1,8 @@
 //
 //  GlobalDragMonitor.swift
-//  DropOver
+//  CloudStash
 //
-//  Created for DropOver App
+//  Created for CloudStash App
 //
 
 import AppKit

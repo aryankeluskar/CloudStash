@@ -1,8 +1,8 @@
 //
 //  ShelfManager.swift
-//  DropOver
+//  CloudStash
 //
-//  Created for DropOver App
+//  Created for CloudStash App
 //
 
 import Foundation
@@ -43,7 +43,7 @@ class ShelfManager: ObservableObject {
     init() {
         // Create temp directory for shelf copies
         let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("DropOverShelf", isDirectory: true)
+            .appendingPathComponent("CloudStashShelf", isDirectory: true)
         
         try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         self.tempDirectory = tempDir
@@ -223,16 +223,17 @@ class ShelfManager: ObservableObject {
             }
         }
         
+        let finalURLs = uploadedURLs
         await MainActor.run {
             isUploading = false
-            
+
             // Copy all URLs to clipboard
-            if !uploadedURLs.isEmpty {
+            if !finalURLs.isEmpty {
                 NSPasteboard.general.clearContents()
-                if uploadedURLs.count == 1 {
-                    NSPasteboard.general.setString(uploadedURLs[0], forType: .string)
+                if finalURLs.count == 1 {
+                    NSPasteboard.general.setString(finalURLs[0], forType: .string)
                 } else {
-                    NSPasteboard.general.setString(uploadedURLs.joined(separator: "\n"), forType: .string)
+                    NSPasteboard.general.setString(finalURLs.joined(separator: "\n"), forType: .string)
                 }
             }
         }

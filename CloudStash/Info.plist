@@ -13,7 +13,7 @@
 			<string>Google OAuth Callback</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.dropover.app</string>
+				<string>com.googleusercontent.apps.446555451602-urjojbh2ln1uokl3alfnvll65v5973lk</string>
 			</array>
 		</dict>
 	</array>

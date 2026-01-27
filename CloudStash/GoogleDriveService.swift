@@ -1,8 +1,8 @@
 //
 //  GoogleDriveService.swift
-//  DropOver
+//  CloudStash
 //
-//  Created for DropOver App
+//  Created for CloudStash App
 //
 
 import Foundation
@@ -15,8 +15,9 @@ actor GoogleDriveService {
     static let shared = GoogleDriveService()
     
     // TODO: Replace with your Google Cloud OAuth credentials
-    private let clientId = "446555451602-1r29ev9fccp7ghnlblajsjiji153r6p8.apps.googleusercontent.com.apps.googleusercontent.com"
-    private let redirectUri = "com.dropover.app:/oauth2callback"
+    private let clientId = "446555451602-urjojbh2ln1uokl3alfnvll65v5973lk.apps.googleusercontent.com"
+    // For iOS/macOS apps, use reversed client ID as redirect URI
+    private let redirectUri = "com.googleusercontent.apps.446555451602-urjojbh2ln1uokl3alfnvll65v5973lk:/oauth2callback"
     
     private let authURL = "https://accounts.google.com/o/oauth2/v2/auth"
     private let tokenURL = "https://oauth2.googleapis.com/token"
@@ -29,7 +30,7 @@ actor GoogleDriveService {
         "https://www.googleapis.com/auth/userinfo.profile"
     ]
     
-    private let settings = SettingsManager.shared
+    private nonisolated let settings = SettingsManager.shared
     
     struct DriveError: Error, LocalizedError {
         let message: String
@@ -90,7 +91,7 @@ actor GoogleDriveService {
         
         // Open in browser
         await MainActor.run {
-            NSWorkspace.shared.open(authURL)
+            _ = NSWorkspace.shared.open(authURL)
         }
     }
     
@@ -229,7 +230,7 @@ actor GoogleDriveService {
         await MainActor.run {
             settings.userEmail = userInfo.email
             settings.userName = userInfo.name ?? userInfo.email
-            settings.userPicture = userInfo.picture
+            settings.userPicture = userInfo.picture ?? ""
         }
     }
     
@@ -511,6 +512,21 @@ private struct DriveFileItem: Decodable {
     let createdTime: String?
     let webViewLink: String?
     let thumbnailLink: String?
+}
+
+// MARK: - Upload Progress Delegate
+
+final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate {
+    private let onProgress: (Int64, Int64) -> Void
+
+    init(onProgress: @escaping (Int64, Int64) -> Void) {
+        self.onProgress = onProgress
+        super.init()
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
+        onProgress(totalBytesSent, totalBytesExpectedToSend)
+    }
 }
 
 // MARK: - CommonCrypto Import

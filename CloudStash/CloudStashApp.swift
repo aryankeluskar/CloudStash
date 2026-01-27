@@ -1,6 +1,6 @@
 //
-//  DropOverApp.swift
-//  DropOver
+//  CloudStashApp.swift
+//  CloudStash
 //
 //  Created by Aryan K on 1/25/26.
 //
@@ -18,7 +18,7 @@ class PopoverBackgroundView: NSView {
 }
 
 @main
-struct DropOverApp: App {
+struct CloudStashApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
     var sharedModelContainer: ModelContainer = {
@@ -71,7 +71,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         
         if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "square.and.arrow.up", accessibilityDescription: "DropOver")
+            button.image = NSImage(systemSymbolName: "square.and.arrow.up", accessibilityDescription: "CloudStash")
             button.action = #selector(statusBarClicked(_:))
             button.target = self
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -104,7 +104,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupShelf() {
         shelfManager = ShelfManager()
         shelfWindowController = ShelfWindowController(shelfManager: shelfManager!)
-        
+        shelfWindowController?.onOpenSettings = { [weak self] in
+            self?.openSettings()
+        }
+
         // Setup global drag monitor
         globalDragMonitor = GlobalDragMonitor()
         globalDragMonitor?.onDragStarted = { [weak self] in
@@ -182,7 +185,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Settings...", action: #selector(menuOpenSettings), keyEquivalent: ","))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Quit DropOver", action: #selector(menuQuit), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: "Quit CloudStash", action: #selector(menuQuit), keyEquivalent: "q"))
         
         for item in menu.items {
             item.target = self
@@ -228,7 +231,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let hostingController = NSHostingController(rootView: settingsView)
         
         let window = NSWindow(contentViewController: hostingController)
-        window.title = "DropOver Settings"
+        window.title = "CloudStash Settings"
         window.styleMask = [.titled, .closable]
         window.isReleasedWhenClosed = false
         
@@ -252,21 +255,39 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func handleURLEvent(_ event: NSAppleEventDescriptor, withReplyEvent replyEvent: NSAppleEventDescriptor) {
         guard let urlString = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue,
               let url = URL(string: urlString) else {
+            print("OAuth callback: failed to parse URL from event")
             return
         }
+
+        print("OAuth callback received: \(url)")
         
-        // Handle OAuth callback
-        if url.scheme == "com.dropover.app" && url.host == "oauth2callback" {
+        // Handle OAuth callback (reversed client ID scheme)
+        if url.scheme == "com.googleusercontent.apps.446555451602-urjojbh2ln1uokl3alfnvll65v5973lk" && url.host == "oauth2callback" {
             Task {
                 do {
                     try await GoogleDriveService.shared.handleOAuthCallback(url: url)
-                    
-                    // Refresh UI
+
+                    // Refresh UI and show success
                     await MainActor.run {
-                        // Close settings window and reopen to show signed-in state
+                        // Close settings window if open and reopen to show signed-in state
                         if let window = self.settingsWindow, window.isVisible {
                             window.close()
                             self.openSettings()
+                        }
+
+                        // Show success notification
+                        let alert = NSAlert()
+                        alert.messageText = "Signed In Successfully"
+                        alert.informativeText = "You're now connected to Google Drive as \(SettingsManager.shared.userEmail)"
+                        alert.alertStyle = .informational
+                        alert.addButton(withTitle: "OK")
+                        alert.runModal()
+
+                        // Refresh shelf if visible (recreate to pick up new state)
+                        if self.shelfWindowController?.isVisible == true {
+                            self.shelfWindowController?.hide()
+                            self.setupShelf()
+                            self.shelfWindowController?.show()
                         }
                     }
                 } catch {
@@ -280,6 +301,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                 }
             }
+        } else {
+            print("OAuth callback: unrecognized URL scheme: \(url.scheme ?? "nil"), host: \(url.host ?? "nil")")
         }
     }
     

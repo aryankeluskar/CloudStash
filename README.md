@@ -1,4 +1,4 @@
-# DropOver
+# CloudStash
 
 A simple macOS menubar app for uploading files to Google Drive with shareable links, plus a floating "shelf" for staging files while you work.
 
@@ -16,15 +16,15 @@ A simple macOS menubar app for uploading files to Google Drive with shareable li
 
 ## Installation
 
-1. Move `DropOver.app` to your Applications folder
+1. Move `CloudStash.app` to your Applications folder
 2. Open the app - it will appear in your menubar
 
 ## Setup
 
-1. Click the DropOver icon in the menubar
+1. Click the CloudStash icon in the menubar
 2. Click the gear icon to open Settings
 3. Click "Sign in with Google"
-4. Authorize DropOver to access your Google Drive
+4. Authorize CloudStash to access your Google Drive
 5. You're ready to upload!
 
 ## Usage
@@ -54,7 +54,7 @@ Uploaded file URLs are automatically copied to your clipboard.
 ## Building from Source
 
 1. Clone the repository
-2. Open `DropOver.xcodeproj` in Xcode
+2. Open `CloudStash.xcodeproj` in Xcode
 3. Update the Google OAuth Client ID in `GoogleDriveService.swift`
 4. Build and run
 
@@ -65,7 +65,7 @@ Uploaded file URLs are automatically copied to your clipboard.
 3. Enable the Google Drive API
 4. Go to Credentials > Create Credentials > OAuth Client ID
 5. Select "macOS" as the application type
-6. Add the bundle identifier: `aryankeluskar.DropOver`
+6. Add the bundle identifier: `aryankeluskar.CloudStash`
 7. Copy the Client ID and paste it in `GoogleDriveService.swift`
 
 ## License

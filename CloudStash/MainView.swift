@@ -21,17 +21,22 @@ struct MainView: View {
     @State private var showSettings = false
 
     var body: some View {
-        Group {
-            if isSignedIn {
-                if showSettings {
-                    InlineSettingsView(showSettings: $showSettings)
+        ZStack {
+            LivelyBackground()
+            
+            Group {
+                if isSignedIn {
+                    if showSettings {
+                        InlineSettingsView(showSettings: $showSettings)
+                    } else {
+                        MainContentView(showSettings: $showSettings)
+                    }
                 } else {
-                    MainContentView(showSettings: $showSettings)
+                    AuthenticationView()
                 }
-            } else {
-                AuthenticationView()
             }
         }
+        .applyAppTheme()
         .animation(.easeInOut(duration: 0.3), value: isSignedIn)
         .animation(.easeInOut(duration: 0.2), value: showSettings)
         .onReceive(NotificationCenter.default.publisher(for: .authStateDidChange)) { _ in
@@ -82,183 +87,194 @@ struct MainContentView: View {
             // Header
             HStack {
                 Text("CloudStash")
-                    .font(.headline)
+                    .font(.system(.headline, design: .rounded))
                 Spacer()
                 Button {
                     showSettings = true
                 } label: {
-                    Image(systemName: "gear")
+                    Image(systemName: "gearshape.fill")
+                        .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.borderless)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+            .background(.ultraThinMaterial)
 
-            Divider()
-
-            // Drop zone — drops go to stash, NOT upload
-            DropZoneView(
-                isTargeted: $isTargeted,
-                isUploading: isUploading,
-                uploadTasks: uploadTasks
-            )
-            .onTapGesture {
-                if !isUploading {
-                    openFilePicker()
-                }
-            }
-            .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
-                handleDrop(providers)
-                return true
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
-            .padding(.bottom, 8)
-
-            // Error message
-            if let error = errorMessage {
-                HStack {
-                    Image(systemName: "exclamationmark.circle.fill")
-                        .foregroundStyle(.red)
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                    Spacer()
-                    Button {
-                        errorMessage = nil
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Drop zone — drops go to stash, NOT upload
+                    DropZoneView(
+                        isTargeted: $isTargeted,
+                        isUploading: isUploading,
+                        uploadTasks: uploadTasks
+                    )
+                    .onTapGesture {
+                        if !isUploading {
+                            openFilePicker()
+                        }
                     }
-                    .buttonStyle(.borderless)
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 8)
-            }
-
-            // === Stash Section ===
-            if !stashedFiles.isEmpty {
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack {
-                        Text("Stash (\(stashedFiles.count))")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button {
-                            uploadAllStashedFiles()
-                        } label: {
-                            Text("Upload All")
-                                .font(.caption)
-                        }
-                        .buttonStyle(.borderless)
-                        .disabled(uploadingStashId != nil)
-
-                        Button {
-                            clearStash()
-                        } label: {
-                            Text("Clear")
-                                .font(.caption)
-                                .foregroundStyle(Color(nsColor: .systemRed))
-                        }
-                        .buttonStyle(.borderless)
-                        .disabled(uploadingStashId != nil)
+                    .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
+                        handleDrop(providers)
+                        return true
                     }
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(Color(nsColor: .windowBackgroundColor))
 
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(stashedFiles) { file in
-                                StashItemRow(
-                                    stashedFile: file,
-                                    stashDirectory: Self.stashDirectoryURL,
-                                    isUploading: uploadingStashId == file.persistentModelID,
-                                    uploadProgress: uploadingStashId == file.persistentModelID ? stashUploadProgress : 0,
-                                    onUpload: {
-                                        Task { await uploadStashedFile(file) }
-                                    },
-                                    onRemove: {
-                                        removeStashedFile(file)
-                                    },
-                                    onPreview: {
-                                        previewStashedFile(file)
-                                    }
-                                )
-                                .padding(.horizontal, 16)
-                                Divider().padding(.leading, 58)
-                            }
-                        }
-                    }
-                    .frame(maxHeight: 150)
-                }
-
-                Divider()
-            }
-
-            // === Recent Uploads Section ===
-            VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Text("Recent Uploads")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    if isLoadingList {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Button {
-                            Task { await loadDriveFiles() }
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                        }
-                        .buttonStyle(.borderless)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Color(nsColor: .windowBackgroundColor))
-
-                if driveFiles.isEmpty && !isLoadingList {
-                    VStack {
-                        Text("No files yet")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    ScrollViewReader { proxy in
-                        List {
-                            ForEach(driveFiles) { file in
-                                FileRowView(
-                                    file: file,
-                                    thumbnailURL: file.thumbnailLink.flatMap { URL(string: $0) },
-                                    isDownloading: downloadingFileId == file.id,
-                                    downloadProgress: downloadingFileId == file.id ? downloadProgress : 0
-                                ) {
-                                    copyToClipboard(file)
-                                } onDelete: {
-                                    await deleteFile(file)
-                                } onDownload: {
-                                    await downloadToDownloads(file)
-                                } onPreview: {
-                                    previewFile(file)
+                    // Error message
+                    if let error = errorMessage {
+                        GlassCard {
+                            HStack {
+                                Image(systemName: "exclamationmark.circle.fill")
+                                    .foregroundStyle(.red)
+                                Text(error)
+                                    .font(.caption)
+                                    .foregroundStyle(.red)
+                                Spacer()
+                                Button {
+                                    errorMessage = nil
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(.secondary)
                                 }
-                                .id(file.id)
-                                .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
+                                .buttonStyle(.borderless)
                             }
+                            .padding(12)
                         }
-                        .listStyle(.plain)
-                        .scrollIndicators(.never)
-                        .onChange(of: driveFiles.first?.id) { _, newValue in
-                            guard let newValue else { return }
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                proxy.scrollTo(newValue, anchor: .top)
+                        .padding(.horizontal, 16)
+                    }
+
+                    // === Stash Section ===
+                    if !stashedFiles.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Text("Stash")
+                                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                                
+                                Text("\(stashedFiles.count)")
+                                    .font(.caption)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Capsule().fill(.secondary.opacity(0.1)))
+                                    .foregroundStyle(.secondary)
+                                
+                                Spacer()
+                                
+                                HStack(spacing: 12) {
+                                    Button {
+                                        uploadAllStashedFiles()
+                                    } label: {
+                                        Label("Upload All", systemImage: "arrow.up.circle.fill")
+                                            .font(.caption)
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .disabled(uploadingStashId != nil)
+
+                                    Button {
+                                        clearStash()
+                                    } label: {
+                                        Text("Clear")
+                                            .font(.caption)
+                                            .foregroundStyle(Color(nsColor: .systemRed))
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .disabled(uploadingStashId != nil)
+                                }
+                            }
+                            .padding(.horizontal, 16)
+
+                            LazyVStack(spacing: 8) {
+                                ForEach(stashedFiles) { file in
+                                    GlassCard(hoverEffect: true) {
+                                        StashItemRow(
+                                            stashedFile: file,
+                                            stashDirectory: Self.stashDirectoryURL,
+                                            isUploading: uploadingStashId == file.persistentModelID,
+                                            uploadProgress: uploadingStashId == file.persistentModelID ? stashUploadProgress : 0,
+                                            onUpload: {
+                                                Task { await uploadStashedFile(file) }
+                                            },
+                                            onRemove: {
+                                                removeStashedFile(file)
+                                            },
+                                            onPreview: {
+                                                previewStashedFile(file)
+                                            }
+                                        )
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 4)
+                                    }
+                                    .padding(.horizontal, 16)
+                                }
                             }
                         }
                     }
+
+                    // === Recent Uploads Section ===
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("Recent Uploads")
+                                .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            if isLoadingList {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Button {
+                                    Task { await loadDriveFiles() }
+                                } label: {
+                                    Image(systemName: "arrow.clockwise")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.borderless)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+
+                        if driveFiles.isEmpty && !isLoadingList {
+                            VStack(spacing: 12) {
+                                Image(systemName: "doc.on.doc")
+                                    .font(.largeTitle)
+                                    .foregroundStyle(.secondary.opacity(0.3))
+                                Text("No files uploaded yet")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 40)
+                        } else {
+                            LazyVStack(spacing: 8) {
+                                ForEach(driveFiles) { file in
+                                    GlassCard(hoverEffect: true) {
+                                        FileRowView(
+                                            file: file,
+                                            thumbnailURL: file.thumbnailLink.flatMap { URL(string: $0) },
+                                            isDownloading: downloadingFileId == file.id,
+                                            downloadProgress: downloadingFileId == file.id ? downloadProgress : 0
+                                        ) {
+                                            copyToClipboard(file)
+                                        } onDelete: {
+                                            await deleteFile(file)
+                                        } onDownload: {
+                                            await downloadToDownloads(file)
+                                        } onPreview: {
+                                            previewFile(file)
+                                        }
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 4)
+                                    }
+                                    .padding(.horizontal, 16)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.bottom, 20)
                 }
+                .padding(.top, 10)
             }
+            .scrollIndicators(.never)
         }
         .frame(width: 320, height: 520)
         .task {
@@ -474,7 +490,7 @@ struct MainContentView: View {
     }
 
     private func copyToClipboard(_ file: GoogleDriveService.DriveFile) {
-        let url = "https://drive.google.com/uc?id=\(file.id)&export=download"
+        let url = "https://drive.google.com/uc?id=\(file.id)"
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(url, forType: .string)
     }

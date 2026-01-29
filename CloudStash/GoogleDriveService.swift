@@ -298,7 +298,7 @@ actor GoogleDriveService {
         progress?(1.0)
         
         // Create direct link
-        let publicURL = "https://drive.google.com/uc?id=\(fileResponse.id)&export=download"
+        let publicURL = "https://drive.google.com/uc?id=\(fileResponse.id)"
         
         return UploadResult(fileId: fileResponse.id, url: publicURL)
     }

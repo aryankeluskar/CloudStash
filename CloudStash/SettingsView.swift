@@ -8,13 +8,23 @@
 import SwiftUI
 
 struct SettingsView: View {
-    var settings = SettingsManager.shared
+    @Bindable var settings = SettingsManager.shared
 
     @State private var isSigningIn = false
     @State private var errorMessage: String?
 
     var body: some View {
         Form {
+            // Appearance Section
+            Section("Appearance") {
+                Picker("Theme", selection: $settings.appTheme) {
+                    ForEach(SettingsManager.AppTheme.allCases) { theme in
+                        Text(theme.displayName).tag(theme)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+            
             // Account Section
             Section {
                 if settings.isSignedIn {
@@ -190,7 +200,7 @@ struct SettingsView: View {
 
 struct InlineSettingsView: View {
     @Binding var showSettings: Bool
-    var settings = SettingsManager.shared
+    @Bindable var settings = SettingsManager.shared
 
     @State private var isSigningIn = false
     @State private var errorMessage: String?
@@ -232,6 +242,27 @@ struct InlineSettingsView: View {
 
             ScrollView {
                 VStack(spacing: 16) {
+                    // Appearance Section
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("APPEARANCE")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 16)
+                            
+                        GlassCard {
+                            VStack {
+                                Picker("Theme", selection: $settings.appTheme) {
+                                    ForEach(SettingsManager.AppTheme.allCases) { theme in
+                                        Text(theme.displayName).tag(theme)
+                                    }
+                                }
+                                .pickerStyle(.segmented)
+                                .padding(12)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
+
                     // Account section
                     VStack(alignment: .leading, spacing: 12) {
                         Text("GOOGLE DRIVE ACCOUNT")

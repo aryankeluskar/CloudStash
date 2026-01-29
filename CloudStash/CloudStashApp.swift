@@ -47,6 +47,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var popoverBackgroundView: PopoverBackgroundView?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Prevent multiple instances - quit if another instance is already running
+        let runningApps = NSWorkspace.shared.runningApplications
+        let myBundleId = Bundle.main.bundleIdentifier ?? "com.cloudstash.CloudStash"
+        let runningInstances = runningApps.filter { $0.bundleIdentifier == myBundleId }
+        if runningInstances.count > 1 {
+            // Another instance is already running, quit this one
+            NSApp.terminate(nil)
+            return
+        }
+
         // Hide dock icon
         NSApp.setActivationPolicy(.accessory)
         

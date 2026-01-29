@@ -32,6 +32,27 @@ final class SettingsManager {
         // OAuth flow state (persisted temporarily during auth flow)
         static let oauthCodeVerifier = "oauth_code_verifier"
         static let oauthState = "oauth_state"
+        
+        // App Settings
+        static let appTheme = "app_theme"
+    }
+    
+    // MARK: - App Theme
+    
+    enum AppTheme: String, CaseIterable, Identifiable {
+        case light
+        case dark
+        case system
+        
+        var id: String { rawValue }
+        
+        var displayName: String {
+            switch self {
+            case .light: return "Light"
+            case .dark: return "Dark"
+            case .system: return "System"
+            }
+        }
     }
     
     // MARK: - Stored Properties for Observation
@@ -44,8 +65,17 @@ final class SettingsManager {
     private(set) var _userPicture: String = ""
     private(set) var _oauthCodeVerifier: String = ""
     private(set) var _oauthState: String = ""
+    private(set) var _appTheme: AppTheme = .light
     
     // MARK: - Public Accessors
+    
+    var appTheme: AppTheme {
+        get { _appTheme }
+        set {
+            _appTheme = newValue
+            defaults.set(newValue.rawValue, forKey: Keys.appTheme)
+        }
+    }
     
     var accessToken: String {
         get { _accessToken }
@@ -148,6 +178,14 @@ final class SettingsManager {
         // Load OAuth flow state (needed if app was relaunched by OAuth redirect)
         _oauthCodeVerifier = defaults.string(forKey: Keys.oauthCodeVerifier) ?? ""
         _oauthState = defaults.string(forKey: Keys.oauthState) ?? ""
+        
+        // Load App Theme (default to light per redesign)
+        if let savedTheme = defaults.string(forKey: Keys.appTheme),
+           let theme = AppTheme(rawValue: savedTheme) {
+            _appTheme = theme
+        } else {
+            _appTheme = .light
+        }
     }
     
     // MARK: - Sign Out

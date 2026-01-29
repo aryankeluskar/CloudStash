@@ -20,45 +20,23 @@ struct AuthenticationView: View {
     private let oauthTimeout: TimeInterval = 180
 
     var body: some View {
-        ZStack {
-            // Background
-            Color(nsColor: .windowBackgroundColor)
-                .ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                Spacer()
-
-                // Main content
-                VStack(spacing: 36) {
+        VStack(spacing: 0) {
+            Spacer()
+            
+            // Main content
+            VStack(spacing: 36) {
                     // App icon and branding
                     VStack(spacing: 16) {
                         // CloudStash icon
-                        ZStack {
-                            Circle()
-                                .fill(
-                                    RadialGradient(
-                                        colors: [Color.accentColor.opacity(0.2), .clear],
-                                        center: .center,
-                                        startRadius: 30,
-                                        endRadius: 70
-                                    )
-                                )
-                                .frame(width: 130, height: 130)
-
-                            Image("CloudStashIcon")
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 88, height: 88)
-                                .clipShape(RoundedRectangle(cornerRadius: 20))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 20)
-                                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
-                                )
-                                .shadow(color: Color.accentColor.opacity(0.3), radius: 20, y: 4)
-                        }
-                        .scaleEffect(appeared ? 1.0 : 0.8)
-                        .opacity(appeared ? 1 : 0)
-                        .animation(.spring(response: 0.6, dampingFraction: 0.7), value: appeared)
+                        Image("CloudStashIcon")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 88, height: 88)
+                            .clipShape(RoundedRectangle(cornerRadius: 20))
+                            .shadow(color: Color.accentColor.opacity(0.3), radius: 20, y: 4)
+                            .scaleEffect(appeared ? 1.0 : 0.8)
+                            .opacity(appeared ? 1 : 0)
+                            .animation(.spring(response: 0.6, dampingFraction: 0.7), value: appeared)
 
                         VStack(spacing: 6) {
                             Text("CloudStash")
@@ -76,21 +54,29 @@ struct AuthenticationView: View {
 
                     // Feature pills
                     VStack(spacing: 10) {
-                        FeatureRow(
-                            icon: "arrow.up.circle.fill",
-                            gradient: LinearGradient(colors: [.cyan, .blue], startPoint: .topLeading, endPoint: .bottomTrailing),
-                            text: "Drop files to upload instantly"
-                        )
-                        FeatureRow(
-                            icon: "link.circle.fill",
-                            gradient: LinearGradient(colors: [.green, Color(red: 0.2, green: 0.8, blue: 0.7)], startPoint: .topLeading, endPoint: .bottomTrailing),
-                            text: "Get shareable links automatically"
-                        )
-                        FeatureRow(
-                            icon: "lock.shield.fill",
-                            gradient: LinearGradient(colors: [.purple, .pink], startPoint: .topLeading, endPoint: .bottomTrailing),
-                            text: "Stored securely in your Google Drive"
-                        )
+                        GlassCard {
+                            FeatureRow(
+                                icon: "arrow.up.circle.fill",
+                                gradient: LinearGradient(colors: [.cyan, .blue], startPoint: .topLeading, endPoint: .bottomTrailing),
+                                text: "Drop files to upload instantly"
+                            )
+                        }
+                        
+                        GlassCard {
+                            FeatureRow(
+                                icon: "link.circle.fill",
+                                gradient: LinearGradient(colors: [.green, Color(red: 0.2, green: 0.8, blue: 0.7)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                                text: "Get shareable links automatically"
+                            )
+                        }
+                        
+                        GlassCard {
+                            FeatureRow(
+                                icon: "lock.shield.fill",
+                                gradient: LinearGradient(colors: [.purple, .pink], startPoint: .topLeading, endPoint: .bottomTrailing),
+                                text: "Stored securely in your Google Drive"
+                            )
+                        }
                     }
                     .padding(.horizontal, 20)
                     .opacity(appeared ? 1 : 0)
@@ -148,12 +134,11 @@ struct AuthenticationView: View {
 
                 Spacer()
 
-                // Footer
-                Text("Your files never leave your control")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .padding(.bottom, 16)
-            }
+            // Footer
+            Text("Your files never leave your control")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .padding(.bottom, 16)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {

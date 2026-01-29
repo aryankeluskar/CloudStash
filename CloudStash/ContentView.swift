@@ -129,14 +129,15 @@ struct DropZoneView: View {
         .frame(maxWidth: .infinity)
         .frame(height: 100)
         .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(isTargeted ? Color.accentColor.opacity(0.1) : Color(nsColor: .quaternaryLabelColor).opacity(0.5))
+            GlassCard(hoverEffect: true) {
+                Color.clear
+            }
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 12)
                 .strokeBorder(
-                    isTargeted ? Color.accentColor : Color(nsColor: .separatorColor),
-                    lineWidth: isTargeted ? 2 : 1
+                    isTargeted ? Color.accentColor : Color.clear,
+                    lineWidth: isTargeted ? 2 : 0
                 )
         )
         .animation(.easeInOut(duration: 0.15), value: isTargeted)
@@ -367,7 +368,7 @@ struct FileRowView: View {
         }
         .padding(.vertical, 6)
         .contentShape(Rectangle())
-        .draggable("https://drive.google.com/uc?id=\(file.id)&export=download") {
+        .draggable("https://drive.google.com/uc?id=\(file.id)") {
             // Drag preview
             Label(file.name, systemImage: iconForFile(file.name))
                 .padding(8)

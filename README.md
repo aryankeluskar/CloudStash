@@ -1,4 +1,5 @@
-# CloudStash
+# CloudStash - Stash Files in the Cloud, Effortlessly
+
 
 A simple macOS menubar app for uploading files to Google Drive with shareable links, plus a floating "shelf" for staging files while you work.
 

@@ -8,6 +8,12 @@
 import Foundation
 import Security
 
+// MARK: - App-wide Notification Names
+
+extension Notification.Name {
+    static let authStateDidChange = Notification.Name("authStateDidChange")
+}
+
 @Observable
 final class SettingsManager {
     static let shared = SettingsManager()
@@ -22,8 +28,8 @@ final class SettingsManager {
         static let userEmail = "google_user_email"
         static let userName = "google_user_name"
         static let userPicture = "google_user_picture"
-        
-        // OAuth flow state (temporary)
+
+        // OAuth flow state (persisted temporarily during auth flow)
         static let oauthCodeVerifier = "oauth_code_verifier"
         static let oauthState = "oauth_state"
     }
@@ -89,15 +95,30 @@ final class SettingsManager {
         }
     }
     
-    // OAuth flow state (temporary, not persisted)
+    // OAuth flow state (persisted temporarily during auth flow)
+    // These MUST be persisted because the app may be relaunched by the OAuth redirect
     var oauthCodeVerifier: String {
         get { _oauthCodeVerifier }
-        set { _oauthCodeVerifier = newValue }
+        set {
+            _oauthCodeVerifier = newValue
+            if newValue.isEmpty {
+                defaults.removeObject(forKey: Keys.oauthCodeVerifier)
+            } else {
+                defaults.set(newValue, forKey: Keys.oauthCodeVerifier)
+            }
+        }
     }
-    
+
     var oauthState: String {
         get { _oauthState }
-        set { _oauthState = newValue }
+        set {
+            _oauthState = newValue
+            if newValue.isEmpty {
+                defaults.removeObject(forKey: Keys.oauthState)
+            } else {
+                defaults.set(newValue, forKey: Keys.oauthState)
+            }
+        }
     }
     
     // MARK: - Computed Properties
@@ -123,10 +144,14 @@ final class SettingsManager {
         _userEmail = defaults.string(forKey: Keys.userEmail) ?? ""
         _userName = defaults.string(forKey: Keys.userName) ?? ""
         _userPicture = defaults.string(forKey: Keys.userPicture) ?? ""
+
+        // Load OAuth flow state (needed if app was relaunched by OAuth redirect)
+        _oauthCodeVerifier = defaults.string(forKey: Keys.oauthCodeVerifier) ?? ""
+        _oauthState = defaults.string(forKey: Keys.oauthState) ?? ""
     }
     
     // MARK: - Sign Out
-    
+
     func signOut() {
         accessToken = ""
         refreshToken = ""
@@ -134,16 +159,24 @@ final class SettingsManager {
         userEmail = ""
         userName = ""
         userPicture = ""
-        
+
         // Clear keychain items
         deleteKeychainItem(key: Keys.accessToken)
         deleteKeychainItem(key: Keys.refreshToken)
-        
+
         // Clear defaults
         defaults.removeObject(forKey: Keys.tokenExpiry)
         defaults.removeObject(forKey: Keys.userEmail)
         defaults.removeObject(forKey: Keys.userName)
         defaults.removeObject(forKey: Keys.userPicture)
+
+        // Notify UI of auth state change
+        NotificationCenter.default.post(name: .authStateDidChange, object: nil)
+    }
+
+    /// Called after successful sign-in to notify UI
+    func notifySignInComplete() {
+        NotificationCenter.default.post(name: .authStateDidChange, object: nil)
     }
     
     // MARK: - Keychain

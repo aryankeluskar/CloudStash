@@ -122,7 +122,13 @@ actor GoogleDriveService {
         // Exchange code for tokens
         let codeVerifier = await MainActor.run { settings.oauthCodeVerifier }
         try await exchangeCodeForTokens(code: code, codeVerifier: codeVerifier)
-        
+
+        // Clear OAuth flow state (no longer needed)
+        await MainActor.run {
+            settings.oauthCodeVerifier = ""
+            settings.oauthState = ""
+        }
+
         // Fetch user info
         try await fetchUserInfo()
     }

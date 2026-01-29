@@ -12,7 +12,8 @@ import Combine
 import AppKit
 import Quartz
 
-// Model to track individual file upload state
+// MARK: - Upload Task Model
+
 struct UploadTask: Identifiable {
     let id = UUID()
     let filename: String
@@ -20,7 +21,7 @@ struct UploadTask: Identifiable {
     var progress: Double = 0
     var status: UploadStatus = .pending
     var resultURL: String?
-    
+
     enum UploadStatus {
         case pending
         case uploading
@@ -29,487 +30,50 @@ struct UploadTask: Identifiable {
     }
 }
 
-struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Environment(\.openSettingsAction) private var openSettings
-    @Query(sort: \UploadedFile.uploadedAt, order: .reverse) private var uploadedFiles: [UploadedFile]
-    
-    var settings = SettingsManager.shared
-    
-    @State private var isTargeted = false
-    @State private var isUploading = false
-    @State private var uploadTasks: [UploadTask] = []
-    @State private var errorMessage: String?
-    @State private var showSettings = false
-    @State private var driveFiles: [GoogleDriveService.DriveFile] = []
-    @State private var isLoadingList = false
-    
-    // Download/Preview state
-    @State private var downloadingFileId: String?
-    @State private var downloadProgress: Double = 0
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack {
-                Text("CloudStash")
-                    .font(.headline)
-                Spacer()
-                Button {
-                    openSettings()
-                } label: {
-                    Image(systemName: "gear")
-                }
-                .buttonStyle(.borderless)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            
-            Divider()
-            
-            if !settings.isSignedIn {
-                // Not signed in view
-                VStack(spacing: 16) {
-                    Image(systemName: "cloud")
-                        .font(.system(size: 40))
-                        .foregroundStyle(.secondary)
-                    Text("Sign in to Google Drive")
-                        .font(.headline)
-                    Text("Connect your Google account to start uploading and sharing files.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                    Button("Open Settings") {
-                        openSettings()
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding()
-            } else {
-                // Drop zone
-                DropZoneView(
-                    isTargeted: $isTargeted,
-                    isUploading: isUploading,
-                    uploadTasks: uploadTasks
-                )
-                .onTapGesture {
-                    if !isUploading {
-                        openFilePicker()
-                    }
-                }
-                .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
-                    guard !isUploading else { return false }
-                    NSApp.activate(ignoringOtherApps: true)
-                    handleDrop(providers)
-                    return true
-                }
-                .padding(16)
-                
-                // Error message
-                if let error = errorMessage {
-                    HStack {
-                        Image(systemName: "exclamationmark.circle.fill")
-                            .foregroundStyle(.red)
-                        Text(error)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                        Spacer()
-                        Button {
-                            errorMessage = nil
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.borderless)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
-                }
-                
-                // Recent uploads
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack {
-                        Text("Recent Uploads")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        if isLoadingList {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Button {
-                                Task { await loadDriveFiles() }
-                            } label: {
-                                Image(systemName: "arrow.clockwise")
-                            }
-                            .buttonStyle(.borderless)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(Color(nsColor: .windowBackgroundColor))
-                    
-                    if driveFiles.isEmpty && !isLoadingList {
-                        VStack {
-                            Text("No files yet")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        ScrollViewReader { proxy in
-                            List {
-                                ForEach(driveFiles) { file in
-                                    FileRowView(
-                                        file: file,
-                                        thumbnailURL: file.thumbnailLink.flatMap { URL(string: $0) },
-                                        isDownloading: downloadingFileId == file.id,
-                                        downloadProgress: downloadingFileId == file.id ? downloadProgress : 0
-                                    ) {
-                                        copyToClipboard(file)
-                                    } onDelete: {
-                                        await deleteFile(file)
-                                    } onDownload: {
-                                        await downloadToDownloads(file)
-                                    } onPreview: {
-                                        previewFile(file)
-                                    }
-                                    .id(file.id)
-                                    .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
-                                }
-                            }
-                            .listStyle(.plain)
-                            .scrollIndicators(.never)
-                            .onChange(of: driveFiles.first?.id) { _, newValue in
-                                guard let newValue else { return }
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    proxy.scrollTo(newValue, anchor: .top)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .frame(width: 320, height: 460)
-        .task {
-            if settings.isSignedIn {
-                await loadDriveFiles()
-            }
-        }
-    }
-    
-    private func handleDrop(_ providers: [NSItemProvider]) {
-        // Collect all file URLs first, then process as a batch
-        let lock = NSLock()
-        var collectedURLs: [URL] = []
-        let group = DispatchGroup()
-        
-        for provider in providers {
-            group.enter()
-            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { data, error in
-                defer { group.leave() }
-                guard let data = data as? Data,
-                      let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
-                lock.lock()
-                collectedURLs.append(url)
-                lock.unlock()
-            }
-        }
-        
-        group.notify(queue: .main) {
-            Task { @MainActor in
-                await self.uploadFiles(collectedURLs)
-            }
-        }
-    }
+// MARK: - Content View (Legacy - redirects to MainView)
 
-    private func openFilePicker() {
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-        NSApp.activate(ignoringOtherApps: true)
-        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
-            panel.beginSheetModal(for: window) { response in
-                guard response == .OK else { return }
-                Task { @MainActor in
-                    await uploadFiles(panel.urls)
-                }
-            }
-        } else {
-            let response = panel.runModal()
-            guard response == .OK else { return }
-            Task { @MainActor in
-                await uploadFiles(panel.urls)
-            }
-        }
+/// Legacy ContentView - Now replaced by MainView
+/// This struct exists for compatibility but redirects to MainView
+struct ContentView: View {
+    var body: some View {
+        MainView()
     }
-    
-    @MainActor
-    private func uploadFiles(_ urls: [URL]) async {
-        guard !urls.isEmpty else { return }
-        
-        // Create upload tasks for all files
-        uploadTasks = urls.map { UploadTask(filename: $0.lastPathComponent, url: $0) }
-        isUploading = true
-        errorMessage = nil
-        
-        var uploadedURLs: [String] = []
-        
-        // Upload files sequentially for clearer progress indication
-        for index in uploadTasks.indices {
-            uploadTasks[index].status = .uploading
-            
-            do {
-                let fileURL = uploadTasks[index].url
-                let result = try await GoogleDriveService.shared.upload(fileURL: fileURL) { progress in
-                    Task { @MainActor in
-                        if index < self.uploadTasks.count {
-                            self.uploadTasks[index].progress = progress
-                        }
-                    }
-                }
-                
-                // Save to local storage
-                let fileSize = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int64) ?? 0
-                let uploadedFile = UploadedFile(
-                    filename: fileURL.lastPathComponent,
-                    key: result.fileId,
-                    url: result.url,
-                    size: fileSize
-                )
-                modelContext.insert(uploadedFile)
-                
-                uploadTasks[index].status = .completed
-                uploadTasks[index].progress = 1
-                uploadTasks[index].resultURL = result.url
-                uploadedURLs.append(result.url)
-                
-                // Add to list immediately
-                let newFile = GoogleDriveService.DriveFile(
-                    id: result.fileId,
-                    name: fileURL.lastPathComponent,
-                    size: fileSize,
-                    createdTime: Date(),
-                    webViewLink: nil,
-                    thumbnailLink: nil
-                )
-                driveFiles.insert(newFile, at: 0)
-                
-            } catch {
-                uploadTasks[index].status = .failed(error.localizedDescription)
-                errorMessage = "Some uploads failed"
-            }
-        }
-        
-        // Copy all successful URLs to clipboard
-        if !uploadedURLs.isEmpty {
-            NSPasteboard.general.clearContents()
-            if uploadedURLs.count == 1 {
-                NSPasteboard.general.setString(uploadedURLs[0], forType: .string)
-            } else {
-                // Join multiple URLs with newlines
-                NSPasteboard.general.setString(uploadedURLs.joined(separator: "\n"), forType: .string)
-            }
-        }
-        
-        // Reset after delay
-        try? await Task.sleep(for: .seconds(2))
-        uploadTasks = []
-        isUploading = false
-    }
-    
-    private func loadDriveFiles() async {
-        isLoadingList = true
-        do {
-            driveFiles = try await GoogleDriveService.shared.listFiles()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-        isLoadingList = false
-    }
-    
-    private func copyToClipboard(_ file: GoogleDriveService.DriveFile) {
-        let url = "https://drive.google.com/uc?id=\(file.id)&export=download"
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(url, forType: .string)
-    }
-    
-    private func deleteFile(_ file: GoogleDriveService.DriveFile) async {
-        do {
-            try await GoogleDriveService.shared.deleteFile(fileId: file.id)
-            await loadDriveFiles()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-    
-    // MARK: - Cache
-    
-    private func cachedFileURL(for file: GoogleDriveService.DriveFile) -> URL {
-        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("CloudStash")
-        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        return tempDir.appendingPathComponent(file.id + "-" + file.name)
-    }
-    
-    private func getCachedFile(for file: GoogleDriveService.DriveFile) -> URL? {
-        let cachedURL = cachedFileURL(for: file)
-        if FileManager.default.fileExists(atPath: cachedURL.path) {
-            return cachedURL
-        }
-        return nil
-    }
-    
-    // MARK: - Download
-    
-    private func downloadToDownloads(_ file: GoogleDriveService.DriveFile) async {
-        // Show save panel first
-        let savePanel = NSSavePanel()
-        savePanel.nameFieldStringValue = file.name
-        savePanel.canCreateDirectories = true
-        savePanel.isExtensionHidden = false
-        
-        NSApp.activate(ignoringOtherApps: true)
-        let response = await savePanel.begin()
-        
-        guard response == .OK, let destination = savePanel.url else {
-            return
-        }
-        
-        // Check if we have it cached (from Quick Look preview)
-        if let cachedURL = getCachedFile(for: file) {
-            do {
-                try FileManager.default.copyItem(at: cachedURL, to: destination)
-                NSWorkspace.shared.selectFile(destination.path, inFileViewerRootedAtPath: "")
-                return
-            } catch {
-                // Cache copy failed, fall through to download
-            }
-        }
-        
-        // Download from Google Drive
-        do {
-            downloadingFileId = file.id
-            downloadProgress = 0
-            
-            // Download to cache first, then copy to destination
-            let cacheURL = cachedFileURL(for: file)
-            let savedURL = try await GoogleDriveService.shared.download(fileId: file.id, to: cacheURL) { progress in
-                Task { @MainActor in
-                    downloadProgress = progress
-                }
-            }
-            
-            // Copy from cache to user's destination
-            if FileManager.default.fileExists(atPath: destination.path) {
-                try FileManager.default.removeItem(at: destination)
-            }
-            try FileManager.default.copyItem(at: savedURL, to: destination)
-            
-            downloadingFileId = nil
-            
-            // Reveal in Finder
-            NSWorkspace.shared.selectFile(destination.path, inFileViewerRootedAtPath: "")
-        } catch {
-            downloadingFileId = nil
-            errorMessage = error.localizedDescription
-        }
-    }
-    
-    // MARK: - Preview with Quick Look
-    
-    private func previewFile(_ file: GoogleDriveService.DriveFile) {
-        Task {
-            let tempFile = cachedFileURL(for: file)
-            
-            // Check if already cached
-            if let cachedURL = getCachedFile(for: file) {
-                await MainActor.run {
-                    showQuickLook(for: cachedURL)
-                }
-                return
-            }
-            
-            // Download to cache
-            do {
-                downloadingFileId = file.id
-                downloadProgress = 0
-                
-                let savedURL = try await GoogleDriveService.shared.download(fileId: file.id, to: tempFile) { progress in
-                    Task { @MainActor in
-                        downloadProgress = progress
-                    }
-                }
-                
-                downloadingFileId = nil
-                
-                await MainActor.run {
-                    showQuickLook(for: savedURL)
-                }
-            } catch {
-                downloadingFileId = nil
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
-    
-    private func showQuickLook(for url: URL) {
-        // Use QLPreviewPanel for Quick Look
-        let coordinator = QuickLookCoordinator()
-        coordinator.items = [QuickLookItem(url: url)]
-        
-        // Store coordinator to keep it alive
-        Self.quickLookCoordinator = coordinator
-        
-        guard let panel = QLPreviewPanel.shared() else { return }
-        panel.dataSource = coordinator
-        panel.delegate = coordinator
-        panel.currentPreviewItemIndex = 0
-        
-        if panel.isVisible {
-            panel.reloadData()
-        } else {
-            panel.makeKeyAndOrderFront(nil)
-        }
-    }
-    
-    // Static storage for coordinator
-    private static var quickLookCoordinator: QuickLookCoordinator?
 }
+
+// MARK: - Drop Zone View
 
 struct DropZoneView: View {
     @Binding var isTargeted: Bool
     let isUploading: Bool
     let uploadTasks: [UploadTask]
-    
+
     private var completedCount: Int {
-        uploadTasks.filter { 
+        uploadTasks.filter {
             if case .completed = $0.status { return true }
             return false
         }.count
     }
-    
+
     private var totalCount: Int {
         uploadTasks.count
     }
-    
+
     private var overallProgress: Double {
         guard !uploadTasks.isEmpty else { return 0 }
         return uploadTasks.reduce(0) { $0 + $1.progress } / Double(uploadTasks.count)
     }
-    
+
     private var currentlyUploading: UploadTask? {
-        uploadTasks.first { 
+        uploadTasks.first {
             if case .uploading = $0.status { return true }
             return false
         }
     }
-    
+
     private var allCompleted: Bool {
         completedCount == totalCount && totalCount > 0
     }
-    
+
     var body: some View {
         VStack(spacing: 8) {
             if isUploading {
@@ -533,7 +97,7 @@ struct DropZoneView: View {
                         ProgressView(value: overallProgress)
                             .progressViewStyle(.linear)
                             .frame(maxWidth: 220)
-                        
+
                         // Status text
                         if totalCount == 1 {
                             Text("Uploading \(currentlyUploading?.filename ?? "")...")
@@ -557,7 +121,7 @@ struct DropZoneView: View {
                 Image(systemName: isTargeted ? "arrow.down.circle.fill" : "arrow.up.circle")
                     .font(.system(size: 24))
                     .foregroundStyle(isTargeted ? Color.accentColor : .secondary)
-                Text(isTargeted ? "Drop to upload" : "Drop files here or click to select")
+                Text(isTargeted ? "Drop to stash" : "Drop files to stash")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -579,10 +143,11 @@ struct DropZoneView: View {
     }
 }
 
-// Custom progress style that doesn't gray out when window loses focus
+// MARK: - Progress View Style
+
 struct ActiveProgressViewStyle: ProgressViewStyle {
     var height: CGFloat = 12
-    
+
     func makeBody(configuration: Configuration) -> some View {
         GeometryReader { geometry in
             let progress = configuration.fractionCompleted ?? 0
@@ -599,6 +164,8 @@ struct ActiveProgressViewStyle: ProgressViewStyle {
     }
 }
 
+// MARK: - Image Caching
+
 enum CachedImageState {
     case loading
     case success(Image)
@@ -608,11 +175,11 @@ enum CachedImageState {
 final class ImageCache {
     static let shared = ImageCache()
     private let cache = NSCache<NSURL, NSImage>()
-    
+
     func image(for url: URL) -> NSImage? {
         cache.object(forKey: url as NSURL)
     }
-    
+
     func insert(_ image: NSImage, for url: URL) {
         cache.setObject(image, forKey: url as NSURL)
     }
@@ -621,13 +188,13 @@ final class ImageCache {
 final class ImageLoader: ObservableObject {
     @Published var state: CachedImageState = .loading
     private var task: Task<Void, Never>?
-    
+
     func load(from url: URL) {
         if let cached = ImageCache.shared.image(for: url) {
             state = .success(Image(nsImage: cached))
             return
         }
-        
+
         task?.cancel()
         task = Task {
             do {
@@ -643,7 +210,7 @@ final class ImageLoader: ObservableObject {
             }
         }
     }
-    
+
     func cancel() {
         task?.cancel()
         task = nil
@@ -654,7 +221,7 @@ struct CachedAsyncImage<Content: View>: View {
     let url: URL
     @ViewBuilder let content: (CachedImageState) -> Content
     @StateObject private var loader = ImageLoader()
-    
+
     var body: some View {
         content(loader.state)
             .onAppear { loader.load(from: url) }
@@ -665,6 +232,8 @@ struct CachedAsyncImage<Content: View>: View {
     }
 }
 
+// MARK: - File Row View
+
 struct FileRowView: View {
     let file: GoogleDriveService.DriveFile
     let thumbnailURL: URL?
@@ -674,16 +243,16 @@ struct FileRowView: View {
     let onDelete: () async -> Void
     let onDownload: () async -> Void
     let onPreview: () -> Void
-    
+
     @State private var isHovered = false
     @State private var isDeleting = false
     @State private var isCopied = false
-    
+
     private var isImageFile: Bool {
         let ext = (file.name as NSString).pathExtension.lowercased()
         return ["jpg", "jpeg", "png", "gif", "webp", "svg"].contains(ext)
     }
-    
+
     var body: some View {
         HStack(spacing: 10) {
             // Thumbnail
@@ -718,14 +287,14 @@ struct FileRowView: View {
                 }
                 .frame(width: 32, height: 32)
             }
-            
+
             // File info
             VStack(alignment: .leading, spacing: 2) {
                 Text(file.name)
                     .font(.system(.subheadline).weight(.medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
-                
+
                 // Show progress bar OR file size
                 if isDownloading {
                     ProgressView(value: downloadProgress)
@@ -737,9 +306,9 @@ struct FileRowView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            
+
             Spacer(minLength: 8)
-            
+
             // Action buttons - always in layout, opacity controlled by hover
             HStack(spacing: 4) {
                 Button {
@@ -762,7 +331,7 @@ struct FileRowView: View {
                 .buttonStyle(.borderless)
                 .help("Copy URL")
                 .disabled(isDeleting || isDownloading)
-                
+
                 Button {
                     Task {
                         await onDownload()
@@ -774,7 +343,7 @@ struct FileRowView: View {
                 .buttonStyle(.borderless)
                 .help("Download")
                 .disabled(isDeleting || isDownloading)
-                
+
                 Button {
                     Task {
                         isDeleting = true
@@ -798,6 +367,13 @@ struct FileRowView: View {
         }
         .padding(.vertical, 6)
         .contentShape(Rectangle())
+        .draggable("https://drive.google.com/uc?id=\(file.id)&export=download") {
+            // Drag preview
+            Label(file.name, systemImage: iconForFile(file.name))
+                .padding(8)
+                .background(.regularMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
         .onHover { isHovered = $0 }
         .onTapGesture(count: 2) {
             if !isDownloading {
@@ -805,7 +381,7 @@ struct FileRowView: View {
             }
         }
     }
-    
+
     private func iconForFile(_ filename: String) -> String {
         let ext = (filename as NSString).pathExtension.lowercased()
         switch ext {
@@ -823,7 +399,118 @@ struct FileRowView: View {
             return "doc"
         }
     }
-    
+
+    private func formatSize(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
+    }
+}
+
+// MARK: - Stash Item Row View
+
+struct StashItemRow: View {
+    let stashedFile: StashedFile
+    let stashDirectory: URL
+    let isUploading: Bool
+    let uploadProgress: Double
+    let onUpload: () -> Void
+    let onRemove: () -> Void
+    let onPreview: () -> Void
+
+    @State private var isHovered = false
+
+    private var fileURL: URL {
+        stashDirectory.appendingPathComponent(stashedFile.localPath)
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            // File icon
+            ZStack {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color(nsColor: .separatorColor).opacity(0.3))
+                Image(systemName: iconForFile(stashedFile.filename))
+                    .font(.system(size: 14))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(width: 32, height: 32)
+
+            // File info
+            VStack(alignment: .leading, spacing: 2) {
+                Text(stashedFile.filename)
+                    .font(.system(.subheadline).weight(.medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                if isUploading {
+                    ProgressView(value: uploadProgress)
+                        .progressViewStyle(ActiveProgressViewStyle(height: 6))
+                        .padding(.top, 2)
+                } else {
+                    Text(formatSize(stashedFile.size))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            // Action buttons
+            HStack(spacing: 4) {
+                Button {
+                    if !isUploading { onUpload() }
+                } label: {
+                    Image(systemName: "icloud.and.arrow.up")
+                        .foregroundStyle(Color.accentColor)
+                }
+                .buttonStyle(.borderless)
+                .help("Upload to Drive")
+                .disabled(isUploading)
+
+                Button {
+                    if !isUploading { onRemove() }
+                } label: {
+                    Image(systemName: "xmark.circle")
+                        .foregroundStyle(Color(nsColor: .systemRed))
+                }
+                .buttonStyle(.borderless)
+                .help("Remove from stash")
+                .disabled(isUploading)
+            }
+            .opacity(isHovered || isUploading ? 1 : 0)
+        }
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+        .onDrag {
+            NSItemProvider(contentsOf: fileURL) ?? NSItemProvider()
+        }
+        .onHover { isHovered = $0 }
+        .onTapGesture(count: 2) {
+            if !isUploading {
+                onPreview()
+            }
+        }
+    }
+
+    private func iconForFile(_ filename: String) -> String {
+        let ext = (filename as NSString).pathExtension.lowercased()
+        switch ext {
+        case "jpg", "jpeg", "png", "gif", "webp", "svg":
+            return "photo"
+        case "mp4", "mov", "avi":
+            return "video"
+        case "mp3", "wav", "m4a":
+            return "music.note"
+        case "pdf":
+            return "doc.richtext"
+        case "zip", "rar", "7z":
+            return "archivebox"
+        default:
+            return "doc"
+        }
+    }
+
     private func formatSize(_ bytes: Int64) -> String {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
@@ -835,30 +522,44 @@ struct FileRowView: View {
 
 class QuickLookItem: NSObject, QLPreviewItem {
     let url: URL
-    
+
     init(url: URL) {
         self.url = url
         super.init()
     }
-    
+
     var previewItemURL: URL? { url }
     var previewItemTitle: String? { url.lastPathComponent }
 }
 
 class QuickLookCoordinator: NSObject, QLPreviewPanelDataSource, QLPreviewPanelDelegate {
     var items: [QuickLookItem] = []
-    
+
     func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
         items.count
     }
-    
+
     func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
         guard index < items.count else { return nil }
         return items[index]
     }
 }
 
-#Preview {
+// MARK: - Previews
+
+#Preview("Content View") {
     ContentView()
-        .modelContainer(for: UploadedFile.self, inMemory: true)
+        .modelContainer(for: [UploadedFile.self, StashedFile.self], inMemory: true)
+}
+
+#Preview("Drop Zone - Idle") {
+    DropZoneView(isTargeted: .constant(false), isUploading: false, uploadTasks: [])
+        .padding()
+        .frame(width: 320)
+}
+
+#Preview("Drop Zone - Targeted") {
+    DropZoneView(isTargeted: .constant(true), isUploading: false, uploadTasks: [])
+        .padding()
+        .frame(width: 320)
 }

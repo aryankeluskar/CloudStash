@@ -22,7 +22,7 @@ struct CloudStashApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema([UploadedFile.self])
+        let schema = Schema([UploadedFile.self, StashedFile.self])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         
         do {
@@ -44,28 +44,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
     var popover: NSPopover?
     var modelContainer: ModelContainer?
-    var settingsWindow: NSWindow?
     var popoverBackgroundView: PopoverBackgroundView?
-    
-    // Shelf components
-    var shelfManager: ShelfManager?
-    var shelfWindowController: ShelfWindowController?
-    var globalDragMonitor: GlobalDragMonitor?
-    
-    // Track if shelf should auto-hide after drag
-    private var shelfWasOpenedByDrag = false
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Hide dock icon
         NSApp.setActivationPolicy(.accessory)
         
         // Setup model container
-        let schema = Schema([UploadedFile.self])
+        let schema = Schema([UploadedFile.self, StashedFile.self])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         modelContainer = try? ModelContainer(for: schema, configurations: [modelConfiguration])
-        
-        // Setup shelf components
-        setupShelf()
         
         // Setup status bar item
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -79,16 +67,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         // Setup popover
         popover = NSPopover()
-        popover?.contentSize = NSSize(width: 320, height: 400)
+        // Match MainContentView frame height (520) so both sections fit
+        popover?.contentSize = NSSize(width: 320, height: 520)
         popover?.behavior = .semitransient
         popover?.animates = true
-        
-        let contentView = ContentView()
+
+        let mainView = MainView()
             .modelContainer(modelContainer!)
-            .environment(\.openSettingsAction, OpenSettingsAction { [weak self] in
-                self?.openSettings()
-            })
-        popover?.contentViewController = NSHostingController(rootView: contentView)
+        popover?.contentViewController = NSHostingController(rootView: mainView)
         
         // Register URL scheme handler for OAuth
         NSAppleEventManager.shared().setEventHandler(
@@ -99,64 +85,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
     
-    // MARK: - Shelf Setup
-    
-    private func setupShelf() {
-        shelfManager = ShelfManager()
-        shelfWindowController = ShelfWindowController(shelfManager: shelfManager!)
-        shelfWindowController?.onOpenSettings = { [weak self] in
-            self?.openSettings()
-        }
-
-        // Setup global drag monitor
-        globalDragMonitor = GlobalDragMonitor()
-        globalDragMonitor?.onDragStarted = { [weak self] in
-            guard let self = self else { return }
-            if !(self.shelfWindowController?.isVisible ?? false) {
-                self.shelfWasOpenedByDrag = true
-                self.shelfWindowController?.showForDrag()
-            }
-        }
-        globalDragMonitor?.onDragEnded = { [weak self] in
-            // Don't auto-hide - let the user close it manually or drop files
-            // The shelf stays open so the user can complete their action
-        }
-        
-        globalDragMonitor?.start()
-    }
-    
     // MARK: - Status Bar Actions
     
     @objc func statusBarClicked(_ sender: NSStatusBarButton) {
         guard let event = NSApp.currentEvent else { return }
-        
+
         if event.type == .rightMouseUp {
             // Right click - show context menu
             showContextMenu()
         } else {
-            // Left click - toggle shelf (primary action)
-            toggleShelf()
+            // Left click - toggle main popover (primary action)
+            // This shows AuthenticationView if not signed in, or uploads view if signed in
+            togglePopover()
         }
-    }
-    
-    func toggleShelf() {
-        // Close popover if open
-        if popover?.isShown == true {
-            popover?.performClose(nil)
-        }
-        
-        shelfWasOpenedByDrag = false
-        shelfWindowController?.toggle()
     }
     
     func togglePopover() {
         guard let popover = popover, let button = statusItem?.button else { return }
-        
-        // Close shelf if open
-        if shelfWindowController?.isVisible == true {
-            shelfWindowController?.hide()
-        }
-        
+
         if popover.isShown {
             popover.performClose(nil)
         } else {
@@ -179,10 +125,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func showContextMenu() {
         let menu = NSMenu()
-        
-        menu.addItem(NSMenuItem(title: "Show Shelf", action: #selector(menuShowShelf), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Show Uploads", action: #selector(menuShowPopover), keyEquivalent: ""))
-        menu.addItem(NSMenuItem.separator())
+
         menu.addItem(NSMenuItem(title: "Settings...", action: #selector(menuOpenSettings), keyEquivalent: ","))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit CloudStash", action: #selector(menuQuit), keyEquivalent: "q"))
@@ -196,140 +139,97 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem?.menu = nil
     }
     
-    @objc func menuShowShelf() {
-        toggleShelf()
-    }
-    
-    @objc func menuShowPopover() {
-        togglePopover()
-    }
-    
     @objc func menuOpenSettings() {
-        openSettings()
+        // Open the popover (settings is handled inline within the popover)
+        if let popover = popover, !popover.isShown {
+            togglePopover()
+        }
     }
-    
+
     @objc func menuQuit() {
         NSApp.terminate(nil)
     }
     
-    // MARK: - Settings
-    
-    func openSettings() {
-        // Close popover and shelf first
-        popover?.performClose(nil)
-        shelfWindowController?.hide()
-        
-        // Check if settings window already exists
-        if let window = settingsWindow, window.isVisible {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-        
-        // Create settings window
-        let settingsView = SettingsView()
-        let hostingController = NSHostingController(rootView: settingsView)
-        
-        let window = NSWindow(contentViewController: hostingController)
-        window.title = "CloudStash Settings"
-        window.styleMask = [.titled, .closable]
-        window.isReleasedWhenClosed = false
-        
-        // Center the window on screen
-        if let screen = NSScreen.main {
-            let screenFrame = screen.visibleFrame
-            let windowSize = window.frame.size
-            let x = screenFrame.origin.x + (screenFrame.width - windowSize.width) / 2
-            let y = screenFrame.origin.y + (screenFrame.height - windowSize.height) / 2
-            window.setFrameOrigin(NSPoint(x: x, y: y))
-        }
-        
-        settingsWindow = window
-        
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-    }
-    
     // MARK: - OAuth URL Handler
-    
+
     @objc func handleURLEvent(_ event: NSAppleEventDescriptor, withReplyEvent replyEvent: NSAppleEventDescriptor) {
         guard let urlString = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue,
               let url = URL(string: urlString) else {
-            print("OAuth callback: failed to parse URL from event")
+            print("[CloudStash OAuth] Failed to parse URL from event")
             return
         }
+        print("[CloudStash OAuth] Callback received (NSAppleEvent): \(url)")
+        processOAuthURL(url)
+    }
 
-        print("OAuth callback received: \(url)")
-        
+    private func processOAuthURL(_ url: URL) {
+        print("[CloudStash OAuth] Scheme: \(url.scheme ?? "nil"), Host: \(url.host ?? "nil"), Path: \(url.path)")
+
         // Handle OAuth callback (reversed client ID scheme)
-        if url.scheme == "com.googleusercontent.apps.446555451602-urjojbh2ln1uokl3alfnvll65v5973lk" && url.host == "oauth2callback" {
+        // Note: With custom URL schemes, "oauth2callback" may appear as
+        // the host (scheme://oauth2callback) or the path (scheme:/oauth2callback)
+        // depending on how the URL is parsed. Check both.
+        let expectedScheme = "com.googleusercontent.apps.446555451602-urjojbh2ln1uokl3alfnvll65v5973lk"
+        let isOAuthCallback = url.host == "oauth2callback" || url.path.contains("oauth2callback")
+        if url.scheme == expectedScheme && isOAuthCallback {
+            print("[CloudStash OAuth] Valid callback, processing...")
+
             Task {
                 do {
+                    print("[CloudStash OAuth] Calling handleOAuthCallback...")
                     try await GoogleDriveService.shared.handleOAuthCallback(url: url)
+                    print("[CloudStash OAuth] handleOAuthCallback succeeded!")
 
-                    // Refresh UI and show success
+                    // Notify all views of auth state change
                     await MainActor.run {
-                        // Close settings window if open and reopen to show signed-in state
-                        if let window = self.settingsWindow, window.isVisible {
-                            window.close()
-                            self.openSettings()
-                        }
+                        print("[CloudStash OAuth] Notifying UI of sign-in complete...")
+                        SettingsManager.shared.notifySignInComplete()
 
                         // Show success notification
                         let alert = NSAlert()
                         alert.messageText = "Signed In Successfully"
                         alert.informativeText = "You're now connected to Google Drive as \(SettingsManager.shared.userEmail)"
                         alert.alertStyle = .informational
+                        if let icon = NSImage(named: "CloudStashIcon") {
+                            alert.icon = icon
+                        }
                         alert.addButton(withTitle: "OK")
                         alert.runModal()
 
-                        // Refresh shelf if visible (recreate to pick up new state)
-                        if self.shelfWindowController?.isVisible == true {
-                            self.shelfWindowController?.hide()
-                            self.setupShelf()
-                            self.shelfWindowController?.show()
-                        }
+                        print("[CloudStash OAuth] Sign-in complete, isSignedIn: \(SettingsManager.shared.isSignedIn)")
                     }
                 } catch {
+                    print("[CloudStash OAuth] Error: \(error.localizedDescription)")
                     await MainActor.run {
                         let alert = NSAlert()
                         alert.messageText = "Sign In Failed"
                         alert.informativeText = error.localizedDescription
                         alert.alertStyle = .warning
+                        if let icon = NSImage(named: "CloudStashIcon") {
+                            alert.icon = icon
+                        }
                         alert.addButton(withTitle: "OK")
                         alert.runModal()
                     }
                 }
             }
         } else {
-            print("OAuth callback: unrecognized URL scheme: \(url.scheme ?? "nil"), host: \(url.host ?? "nil")")
+            print("[CloudStash OAuth] Unrecognized URL - expected scheme: \(expectedScheme)")
         }
     }
     
     // MARK: - Cleanup
     
     func applicationWillTerminate(_ notification: Notification) {
-        globalDragMonitor?.stop()
-        shelfManager?.cleanupTempFiles()
+        // Clean up temporary cache directory used for downloaded/previewed files
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("CloudStash", isDirectory: true)
+        if FileManager.default.fileExists(atPath: tempDir.path) {
+            do {
+                try FileManager.default.removeItem(at: tempDir)
+            } catch {
+                print("[CloudStash] Failed to clean temporary cache directory: \(error)")
+            }
+        }
     }
 }
 
-// Custom environment key for opening settings
-struct OpenSettingsAction {
-    let action: () -> Void
-    
-    func callAsFunction() {
-        action()
-    }
-}
-
-struct OpenSettingsActionKey: EnvironmentKey {
-    static let defaultValue = OpenSettingsAction { }
-}
-
-extension EnvironmentValues {
-    var openSettingsAction: OpenSettingsAction {
-        get { self[OpenSettingsActionKey.self] }
-        set { self[OpenSettingsActionKey.self] = newValue }
-    }
-}

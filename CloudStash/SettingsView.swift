@@ -145,28 +145,6 @@ struct SettingsView: View {
 
                         Spacer()
                     }
-                    HStack {
-                        AsyncImage(url: URL(string: "https://github.com/fayazara.png")) { image in
-                            image
-                                .resizable()
-                                .scaledToFill()
-                        } placeholder: {
-                            Circle()
-                                .fill(Color(nsColor: .quaternaryLabelColor))
-                        }
-                        .frame(width: 32, height: 32)
-                        .clipShape(Circle())
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Fayaz Ahmed")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                            Link("@fayazara", destination: URL(string: "https://x.com/fayazara")!)
-                                .font(.caption)
-                        }
-
-                        Spacer()
-                    }
                 }
             }
         }
@@ -381,24 +359,6 @@ struct InlineSettingsView: View {
                                         .font(.caption)
                                         .fontWeight(.medium)
                                     Link("@soydotrun", destination: URL(string: "https://x.com/soydotrun")!)
-                                        .font(.caption2)
-                                }
-                                Spacer()
-                            }
-                            HStack {
-                                AsyncImage(url: URL(string: "https://github.com/fayazara.png")) { image in
-                                    image.resizable().scaledToFill()
-                                } placeholder: {
-                                    Circle().fill(Color(nsColor: .quaternaryLabelColor))
-                                }
-                                .frame(width: 28, height: 28)
-                                .clipShape(Circle())
-
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text("Fayaz Ahmed")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                    Link("@fayazara", destination: URL(string: "https://x.com/fayazara")!)
                                         .font(.caption2)
                                 }
                                 Spacer()

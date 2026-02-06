@@ -12,6 +12,7 @@ import Security
 
 extension Notification.Name {
     static let authStateDidChange = Notification.Name("authStateDidChange")
+    static let filesDroppedInApp = Notification.Name("filesDroppedInApp")
 }
 
 @Observable

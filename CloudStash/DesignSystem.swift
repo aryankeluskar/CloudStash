@@ -2,7 +2,7 @@
 //  DesignSystem.swift
 //  CloudStash
 //
-//  Created for CloudStash App Redesign
+//  Created for CloudStash App by Aryan Keluskar
 //
 
 import SwiftUI

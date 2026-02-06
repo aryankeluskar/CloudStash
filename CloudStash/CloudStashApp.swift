@@ -45,6 +45,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var popover: NSPopover?
     var modelContainer: ModelContainer?
     var popoverBackgroundView: PopoverBackgroundView?
+
+    // Drag detection state
+    private var dragPollTimer: Timer?
+    private var lastDragChangeCount: Int = 0
+    private var isDraggingFiles = false
+    private var popoverAutoShownByDrag = false
+    private var filesWereDroppedInApp = false
+    private var mouseUpMonitor: Any?
+    private var escapeMonitor: Any?
+    private var dragEndWorkItem: DispatchWorkItem?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Prevent multiple instances - quit if another instance is already running
@@ -93,6 +103,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             forEventClass: AEEventClass(kInternetEventClass),
             andEventID: AEEventID(kAEGetURL)
         )
+
+        // Monitor for file drags system-wide to auto-show popover
+        startDragMonitoring()
     }
     
     // MARK: - Status Bar Actions
@@ -228,9 +241,137 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     
+    // MARK: - Drag Monitoring
+    //
+    // Detects system-wide file drags by combining two signals:
+    // 1. Polling NSPasteboard(name: .drag).changeCount — only reacts when a NEW drag starts
+    //    (the pasteboard retains stale types after drag ends, so we never check types alone)
+    // 2. Global monitors for leftMouseUp and Escape — reliably detect when any drag ends
+
+    func startDragMonitoring() {
+        // Snapshot the current changeCount so we don't react to stale pasteboard state
+        lastDragChangeCount = NSPasteboard(name: .drag).changeCount
+
+        // Poll for new drag sessions (changeCount increments when a new drag begins)
+        dragPollTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
+            self?.checkForNewDrag()
+        }
+        // Ensure timer fires even during modal/tracking run loop modes
+        RunLoop.current.add(dragPollTimer!, forMode: .common)
+
+        // Global monitor: mouse-up signals drag end (drop or release)
+        mouseUpMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { [weak self] _ in
+            self?.handleDragEnd()
+        }
+
+        // Global monitor: Escape key cancels a drag
+        escapeMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.keyCode == 53 { // Escape
+                self?.handleDragEnd()
+            }
+        }
+
+        // Listen for successful drops into our app
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleFilesDroppedInApp),
+            name: .filesDroppedInApp,
+            object: nil
+        )
+    }
+
+    @objc private func handleFilesDroppedInApp() {
+        filesWereDroppedInApp = true
+    }
+
+    private func checkForNewDrag() {
+        let dragPasteboard = NSPasteboard(name: .drag)
+        let currentChangeCount = dragPasteboard.changeCount
+
+        // Only react when changeCount actually changes (= new drag started)
+        guard currentChangeCount != lastDragChangeCount else { return }
+        lastDragChangeCount = currentChangeCount
+
+        // Check if the new drag contains file URLs
+        guard let types = dragPasteboard.types else { return }
+        let fileTypes: [NSPasteboard.PasteboardType] = [
+            .fileURL,
+            NSPasteboard.PasteboardType("NSFilenamesPboardType"),
+            NSPasteboard.PasteboardType("public.file-url"),
+        ]
+        let containsFiles = fileTypes.contains { types.contains($0) }
+        guard containsFiles else { return }
+
+        // New file drag detected — cancel any pending drag-end action and reset drop flag
+        dragEndWorkItem?.cancel()
+        dragEndWorkItem = nil
+        isDraggingFiles = true
+        filesWereDroppedInApp = false
+
+        // Auto-show popover if not already visible
+        if let popover = popover, !popover.isShown {
+            popoverAutoShownByDrag = true
+            showPopover()
+        }
+    }
+
+    private func handleDragEnd() {
+        guard isDraggingFiles else { return }
+
+        // Short delay so the drop handler in MainView has time to process and post
+        // the .filesDroppedInApp notification before we check the flag
+        dragEndWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.isDraggingFiles = false
+
+            // If we auto-showed the popover and the file was NOT dropped into our app,
+            // close the popover — the user dragged it somewhere else
+            if self.popoverAutoShownByDrag && !self.filesWereDroppedInApp {
+                self.popover?.performClose(nil)
+            }
+
+            self.popoverAutoShownByDrag = false
+            self.filesWereDroppedInApp = false
+        }
+        dragEndWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
+    }
+
+    private func showPopover() {
+        guard let popover = popover, let button = statusItem?.button else { return }
+        guard !popover.isShown else { return }
+
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        popover.contentViewController?.view.window?.makeKey()
+
+        if let contentView = popover.contentViewController?.view,
+           let frameView = contentView.window?.contentView?.superview {
+            if popoverBackgroundView == nil || popoverBackgroundView?.superview == nil {
+                let bgView = PopoverBackgroundView(frame: frameView.bounds)
+                bgView.autoresizingMask = [.width, .height]
+                frameView.addSubview(bgView, positioned: .below, relativeTo: frameView)
+                popoverBackgroundView = bgView
+            }
+        }
+    }
+
     // MARK: - Cleanup
-    
+
     func applicationWillTerminate(_ notification: Notification) {
+        // Clean up drag monitoring
+        dragPollTimer?.invalidate()
+        dragPollTimer = nil
+        dragEndWorkItem?.cancel()
+        dragEndWorkItem = nil
+        if let monitor = mouseUpMonitor {
+            NSEvent.removeMonitor(monitor)
+            mouseUpMonitor = nil
+        }
+        if let monitor = escapeMonitor {
+            NSEvent.removeMonitor(monitor)
+            escapeMonitor = nil
+        }
         // Clean up temporary cache directory used for downloaded/previewed files
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("CloudStash", isDirectory: true)
         if FileManager.default.fileExists(atPath: tempDir.path) {

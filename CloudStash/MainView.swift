@@ -2,7 +2,7 @@
 //  MainView.swift
 //  CloudStash
 //
-//  Created for CloudStash App
+//  Created for CloudStash App by Aryan Keluskar
 //
 
 import SwiftUI
@@ -330,6 +330,9 @@ struct MainContentView: View {
         group.notify(queue: .main) {
             Task { @MainActor in
                 self.addFilesToStash(collectedURLs)
+                if !collectedURLs.isEmpty {
+                    NotificationCenter.default.post(name: .filesDroppedInApp, object: nil)
+                }
             }
         }
     }

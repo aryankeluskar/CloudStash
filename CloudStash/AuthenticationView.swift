@@ -2,7 +2,7 @@
 //  AuthenticationView.swift
 //  CloudStash
 //
-//  Created for CloudStash App
+//  Created for CloudStash App by Aryan Keluskar
 //
 
 import SwiftUI
@@ -11,6 +11,7 @@ import SwiftUI
 /// This view is shown when the user is not authenticated
 struct AuthenticationView: View {
     @State private var isSigningIn = false
+    @State private var showOpeningBrowser = false
     @State private var errorMessage: String?
     @State private var isHovering = false
     @State private var signInTask: Task<Void, Never>?
@@ -89,7 +90,7 @@ struct AuthenticationView: View {
                             signIn()
                         } label: {
                             HStack(spacing: 10) {
-                                if isSigningIn {
+                                if showOpeningBrowser {
                                     ProgressView()
                                         .controlSize(.small)
                                         .tint(.white)
@@ -97,7 +98,7 @@ struct AuthenticationView: View {
                                     Image(systemName: "person.badge.key.fill")
                                         .font(.system(size: 15))
                                 }
-                                Text(isSigningIn ? "Opening browser..." : "Sign in with Google")
+                                Text(showOpeningBrowser ? "Opening browser..." : "Sign in with Google")
                                     .fontWeight(.semibold)
                             }
                             .frame(maxWidth: .infinity)
@@ -107,8 +108,8 @@ struct AuthenticationView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                         }
                         .buttonStyle(.plain)
-                        .disabled(isSigningIn)
-                        .scaleEffect(isHovering && !isSigningIn ? 1.02 : 1.0)
+                        .disabled(showOpeningBrowser)
+                        .scaleEffect(isHovering && !showOpeningBrowser ? 1.02 : 1.0)
                         .animation(.easeInOut(duration: 0.15), value: isHovering)
                         .onHover { isHovering = $0 }
 
@@ -148,6 +149,7 @@ struct AuthenticationView: View {
 
     private func signIn() {
         isSigningIn = true
+        showOpeningBrowser = true
         errorMessage = nil
 
         // Cancel any previous sign-in task
@@ -157,8 +159,14 @@ struct AuthenticationView: View {
             do {
                 try await GoogleDriveService.shared.startOAuthFlow()
 
-                // Start timeout timer - if OAuth doesn't complete in time, reset state
-                try await Task.sleep(for: .seconds(oauthTimeout))
+                // Show "Opening browser..." for 2 seconds, then revert to clickable button
+                try await Task.sleep(for: .seconds(2))
+                await MainActor.run {
+                    showOpeningBrowser = false
+                }
+
+                // Continue waiting for OAuth callback with timeout
+                try await Task.sleep(for: .seconds(oauthTimeout - 2))
 
                 // If we reach here, OAuth timed out (callback never came)
                 await MainActor.run {
@@ -173,6 +181,7 @@ struct AuthenticationView: View {
                 await MainActor.run {
                     errorMessage = error.localizedDescription
                     isSigningIn = false
+                    showOpeningBrowser = false
                 }
             }
         }
@@ -182,6 +191,7 @@ struct AuthenticationView: View {
     func onSignInComplete() {
         signInTask?.cancel()
         isSigningIn = false
+        showOpeningBrowser = false
         errorMessage = nil
     }
 }

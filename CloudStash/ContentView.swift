@@ -11,6 +11,7 @@ import UniformTypeIdentifiers
 import Combine
 import AppKit
 import Quartz
+import QuickLookThumbnailing
 
 // MARK: - Upload Task Model
 
@@ -420,22 +421,40 @@ struct StashItemRow: View {
     let onPreview: () -> Void
 
     @State private var isHovered = false
+    @State private var thumbnail: NSImage?
 
     private var fileURL: URL {
         stashDirectory.appendingPathComponent(stashedFile.localPath)
     }
 
+    private var isPreviewable: Bool {
+        let ext = (stashedFile.filename as NSString).pathExtension.lowercased()
+        return ["jpg", "jpeg", "png", "gif", "webp", "svg", "pdf", "heic", "tiff", "bmp"].contains(ext)
+    }
+
     var body: some View {
         HStack(spacing: 10) {
-            // File icon
-            ZStack {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color(nsColor: .separatorColor).opacity(0.3))
-                Image(systemName: iconForFile(stashedFile.filename))
-                    .font(.system(size: 14))
-                    .foregroundStyle(.secondary)
+            // File icon / thumbnail
+            if let thumbnail {
+                Image(nsImage: thumbnail)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 32, height: 32)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.5)
+                    )
+            } else {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color(nsColor: .separatorColor).opacity(0.3))
+                    Image(systemName: iconForFile(stashedFile.filename))
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(width: 32, height: 32)
             }
-            .frame(width: 32, height: 32)
 
             // File info
             VStack(alignment: .leading, spacing: 2) {
@@ -492,12 +511,37 @@ struct StashItemRow: View {
                 onPreview()
             }
         }
+        .task(id: stashedFile.localPath) {
+            guard isPreviewable else { return }
+            await generateThumbnail()
+        }
+    }
+
+    private func generateThumbnail() async {
+        let url = fileURL
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+
+        let request = QLThumbnailGenerator.Request(
+            fileAt: url,
+            size: CGSize(width: 64, height: 64),
+            scale: NSScreen.main?.backingScaleFactor ?? 2.0,
+            representationTypes: .thumbnail
+        )
+
+        do {
+            let representation = try await QLThumbnailGenerator.shared.generateBestRepresentation(for: request)
+            await MainActor.run {
+                self.thumbnail = representation.nsImage
+            }
+        } catch {
+            // Fall back to icon — thumbnail stays nil
+        }
     }
 
     private func iconForFile(_ filename: String) -> String {
         let ext = (filename as NSString).pathExtension.lowercased()
         switch ext {
-        case "jpg", "jpeg", "png", "gif", "webp", "svg":
+        case "jpg", "jpeg", "png", "gif", "webp", "svg", "heic", "tiff", "bmp":
             return "photo"
         case "mp4", "mov", "avi":
             return "video"

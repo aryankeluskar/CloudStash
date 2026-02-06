@@ -74,7 +74,7 @@ struct AuthenticationView: View {
                         GlassCard {
                             FeatureRow(
                                 icon: "lock.shield.fill",
-                                gradient: LinearGradient(colors: [.purple, .pink], startPoint: .topLeading, endPoint: .bottomTrailing),
+                                gradient: LinearGradient(colors: [.indigo, .purple.opacity(0.8)], startPoint: .topLeading, endPoint: .bottomTrailing),
                                 text: "Stored securely in your Google Drive"
                             )
                         }

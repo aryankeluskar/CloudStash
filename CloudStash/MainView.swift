@@ -99,7 +99,7 @@ struct MainContentView: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
-            .background(.ultraThinMaterial)
+            .background(.ultraThinMaterial.opacity(0.5))
 
             ScrollView {
                 VStack(spacing: 20) {

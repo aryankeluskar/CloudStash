@@ -41,15 +41,15 @@ struct LivelyBackground: View {
     @State private var animate = false
     @Environment(\.colorScheme) var colorScheme
     
-    // Pastels for light mode
+    // Pastels for light mode — cool, professional palette
     let colors: [Color] = [
-        Color(hex: "FF9A9E"), // Soft Pink
-        Color(hex: "FECFEF"), // Pale Pink
-        Color(hex: "A18CD1"), // Soft Purple
-        Color(hex: "FBC2EB"), // Lavender
-        Color(hex: "8FD3F4"), // Sky Blue
-        Color(hex: "84FAB0")  // Mint
-    ].map { $0.opacity(0.4) }
+        Color(hex: "90CAF9"), // Soft Blue
+        Color(hex: "80DEEA"), // Light Teal
+        Color(hex: "B0BEC5"), // Cool Grey
+        Color(hex: "A5D6A7"), // Sage Green
+        Color(hex: "81D4FA"), // Sky Blue
+        Color(hex: "B39DDB")  // Muted Lavender
+    ].map { $0.opacity(0.35) }
     
     var body: some View {
         GeometryReader { proxy in

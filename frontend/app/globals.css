@@ -1,0 +1,193 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f8f9fc;
+  --foreground: #1a1a2e;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --surface: rgba(255, 255, 255, 0.6);
+  --surface-border: rgba(255, 255, 255, 0.7);
+  --surface-shadow: rgba(0, 0, 0, 0.04);
+  --muted: #64748b;
+  --muted-light: #94a3b8;
+  --section-bg: rgba(255, 255, 255, 0.35);
+
+  /* Pastel orbs */
+  --orb-pink: #FF9A9E;
+  --orb-purple: #A18CD1;
+  --orb-blue: #8FD3F4;
+  --orb-mint: #84FAB0;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-muted: var(--muted);
+  --color-muted-light: var(--muted-light);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0c0c14;
+    --foreground: #e8e8f0;
+    --accent: #60a5fa;
+    --accent-hover: #93bbfd;
+    --surface: rgba(255, 255, 255, 0.04);
+    --surface-border: rgba(255, 255, 255, 0.08);
+    --surface-shadow: rgba(0, 0, 0, 0.3);
+    --muted: #8892a8;
+    --muted-light: #5a6478;
+    --section-bg: rgba(255, 255, 255, 0.02);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Orb animations */
+@keyframes float-1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -50px) scale(1.05); }
+  66% { transform: translate(-20px, 20px) scale(0.95); }
+}
+
+@keyframes float-2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(-40px, 30px) scale(0.95); }
+  66% { transform: translate(25px, -40px) scale(1.08); }
+}
+
+@keyframes float-3 {
+  0%, 100% { transform: translate(0, 0) scale(1.02); }
+  33% { transform: translate(50px, 20px) scale(0.98); }
+  66% { transform: translate(-30px, -35px) scale(1.04); }
+}
+
+@keyframes float-4 {
+  0%, 100% { transform: translate(0, 0) scale(0.98); }
+  33% { transform: translate(-25px, -45px) scale(1.03); }
+  66% { transform: translate(35px, 15px) scale(0.96); }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.7s ease-out both;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.6s ease-out both;
+}
+
+.delay-100 { animation-delay: 0.1s; }
+.delay-200 { animation-delay: 0.2s; }
+.delay-300 { animation-delay: 0.3s; }
+.delay-400 { animation-delay: 0.4s; }
+.delay-500 { animation-delay: 0.5s; }
+.delay-600 { animation-delay: 0.6s; }
+
+/* Glass surface */
+.glass {
+  background: var(--surface);
+  border: 1px solid var(--surface-border);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  box-shadow: 0 4px 24px var(--surface-shadow);
+}
+
+.glass-subtle {
+  background: var(--section-bg);
+  border: 1px solid var(--surface-border);
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+}
+
+/* Prose styles for legal pages */
+.prose-legal h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin-bottom: 0.5rem;
+  color: var(--foreground);
+}
+
+.prose-legal h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-top: 2.5rem;
+  margin-bottom: 0.75rem;
+  color: var(--foreground);
+}
+
+.prose-legal p,
+.prose-legal li {
+  font-size: 0.95rem;
+  line-height: 1.75;
+  color: var(--muted);
+}
+
+.prose-legal ul {
+  list-style: disc;
+  padding-left: 1.5rem;
+  margin-top: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.prose-legal li {
+  margin-bottom: 0.25rem;
+}
+
+.prose-legal a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.prose-legal a:hover {
+  color: var(--accent-hover);
+}
+
+.prose-legal strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.prose-legal code {
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.85em;
+  background: var(--surface);
+  border: 1px solid var(--surface-border);
+  padding: 0.15em 0.4em;
+  border-radius: 5px;
+}

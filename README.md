@@ -1,4 +1,4 @@
-# CloudStash - Stash Files in the Cloud, Effortlessly
+# CloudStash
 
 ![banner](banner.png)
 
